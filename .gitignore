@@ -1,0 +1,22 @@
+# secrets / env
+.env
+.env.*
+!.env.example
+config/*.local.yaml
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# logs
+*.log
+
+# editor / claude
+.claude/
+.vscode/
+.idea/
