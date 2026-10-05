@@ -508,9 +508,9 @@ Res 200: { "credentials": [ { "credential_id": "...", "description": "...", "all
 | SR | 実装 |
 |----|------|
 | SR-001 Secret を API レスポンスに含めない | `/credentials/request` は handle のみ。`/execute` は sanitize 済み。sanitizer にパターンマスク。テスト `test_broker.py::test_request_returns_handle_only` / `test_injection.py::test_execute_response_has_no_secret` |
-| SR-002 Secret をログに書かない | `redaction.py` の logging.Filter を root logger に装着 + AuditLogger は構造化フィールドのみ受け付け（自由文字列を取らない）。テスト `test_logging.py` |
+| SR-002 Secret をログに書かない | `redaction.py` が LogRecord factory を差し替えて全ロガーのレコード（例外トレースバック含む）を伏字化 + AuditLogger は構造化フィールドのみ受け付け（自由文字列を取らない）。テスト `test_logging.py` |
 | SR-003 例外に Secret を含めない | `BrokerError` は `error_code` のみ保持。executor は upstream 例外を捕捉し `PROVIDER_ERROR` に潰す。httpx の `request`/`response` オブジェクトを例外メッセージに含めない |
-| SR-004 AI が任意 Secret 名を指定不可 | API 入力は `credential_id`（`^[a-z0-9_]+$`）のみ。`secret_name` は config 内部。`get_secret` を叩く公開エンドポイント無し。テスト `test_injection.py::test_no_raw_secret_endpoint` |
+| SR-004 AI が任意 Secret 名を指定不可 | API 入力は `credential_id`（長さ1〜64、config の完全一致 lookup のみ）だけ。`secret_name` は config 内部。`get_secret` を叩く公開エンドポイント無し。テスト `test_injection.py::test_no_raw_secret_endpoint` |
 | SR-005 Mapping はサーバ側固定 | `credentials.yaml` はロード専用。更新 API 無し。ファイルは `chmod 640` |
 | SR-006 Allowlist 方式 | `PolicyEngine` が `cred.allowed_actions` と `ActionSpec` 登録の二重 allowlist。デフォルト拒否 |
 | SR-007 Handle エントロピー | `secrets.token_urlsafe(24)` = 192bit |
