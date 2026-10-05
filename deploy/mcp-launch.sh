@@ -37,6 +37,6 @@ export AUDIT_LOG_PATH="${AUDIT_LOG_PATH:-$HOME/.local/state/credential-broker/au
 # No BROKER_API_TOKEN: the stdio process boundary is the trust boundary.
 
 cd "$ROOT"
-"$ROOT/.venv/bin/python" -m app.mcp_server &
+"$ROOT/.venv/bin/python" -m app.mcp_server <&0 &
 child=$!
 wait "$child"
