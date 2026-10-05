@@ -111,7 +111,7 @@ broker がカバーしない任意コマンドでのトークン漏洩を止め�
 ## テスト
 
 ```bash
-.venv/bin/pytest -q                       # 77 tests
+.venv/bin/pytest -q                       # 78 tests
 .venv/bin/pytest -q --cov=app --cov-report=term-missing
 .venv/bin/ruff check .
 ```

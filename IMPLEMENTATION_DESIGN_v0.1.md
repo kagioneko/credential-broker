@@ -247,7 +247,7 @@ class ErrorResponse(BaseModel):
     error: str
 ```
 
-- `action` は pattern（`^[a-z0-9_]+$`）で **path traversal 文字（`/ . \`）を弾く**。`credential_id` は pattern を持たず長さ制限のみで、config の完全一致 lookup に外れたものはすべて「存在しない credential_id」になる（実装 `app/models/api.py`）。`../../.env` や `secret/data/root` は 422 ではなく「存在しない credential_id」として扱いたいので、**pattern バリデーションで落ちたら 404 `UNKNOWN_CREDENTIAL` に正規化する**（§8 のハンドラで変換。TEST-005/006 対応）。
+- `action` は pattern（`^[a-z0-9_]+$`）で **path traversal 文字（`/ . \`）を弾く**。`credential_id` は pattern を持たず長さ制限のみで、config の完全一致 lookup に外れたものはすべて「存在しない credential_id」になる（実装 `app/models/api.py`）。そのため `../../.env` や `secret/data/root` を credential_id に渡しても 404 `UNKNOWN_CREDENTIAL` になる（TEST-005/006 対応）。リクエストの形式違反（action の pattern 違反など）は 422 `INVALID_PARAMETER`。
 
 ### 4.3 設定モデル `app/models/config.py`
 

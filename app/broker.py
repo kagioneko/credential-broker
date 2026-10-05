@@ -179,12 +179,13 @@ class CredentialBroker:
         known_secrets = {cred.secret, *self._secret_registry.snapshot()}
         # Redact the raw upstream body BEFORE the action sanitiser runs: sanitisers
         # may truncate strings, and a secret cut at the boundary would no longer
-        # match either the patterns or the literal guard.
-        raw = redact_literals(scrub(result.body), known_secrets)
+        # match either the patterns or the literal guard. Exact-match redaction
+        # always runs FIRST: if a pattern masked part of a known secret first, the
+        # full literal would no longer match and its remainder would leak.
+        raw = scrub(redact_literals(result.body, known_secrets))
         data = decision.spec.sanitize(raw)
-        data = scrub(data)
         # Authoritative guard: strip any verbatim secret value regardless of format.
-        data = redact_literals(data, known_secrets)
+        data = scrub(redact_literals(data, known_secrets))
         data = enforce_caps(
             data,
             max_bytes=self._config.max_response_bytes,

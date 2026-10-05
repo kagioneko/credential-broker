@@ -5,6 +5,46 @@ import pytest
 
 from tests.conftest import DOTENV_SECRET, REAL_LOOKING_TOKEN, issue_handle
 
+COMPOSITE_SECRET = "custom-prefix-" + REAL_LOOKING_TOKEN + "-custom-suffix"
+
+
+@pytest.fixture
+def composite_secret(env):
+    # Requested before `client` so the app loads this .env instead of the default.
+    env["dotenv"].write_text(f"GITHUB_TOKEN={COMPOSITE_SECRET}\n")
+    return COMPOSITE_SECRET
+
+
+async def test_known_secret_containing_a_pattern_match_is_fully_redacted(composite_secret, client, respx_mock):
+    # If pattern masking ran before exact-match redaction, the embedded ghp_ part
+    # would be masked first and the prefix/suffix of the real secret would leak.
+    respx_mock.get("https://api.github.com/repos/example-org/demo/issues/9").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "number": 9,
+                "title": f"title {composite_secret}",
+                "state": "open",
+                "html_url": "https://github.com/example-org/demo/issues/9",
+                "user": {"login": "someone"},
+                "labels": [],
+                "body": f"body {composite_secret} end",
+            },
+        )
+    )
+    handle = await issue_handle(client)
+    r = await client.post(
+        "/execute",
+        json={
+            "credential_handle": handle,
+            "action": "get_issue",
+            "parameters": {"owner": "example-org", "repo": "demo", "number": 9},
+        },
+    )
+    assert r.status_code == 200
+    assert "custom-prefix" not in r.text
+    assert "custom-suffix" not in r.text
+
 
 @pytest.mark.parametrize("secret", [REAL_LOOKING_TOKEN, DOTENV_SECRET], ids=["pattern", "literal"])
 async def test_body_preview_never_leaks_a_secret_cut_at_the_truncation_boundary(client, respx_mock, secret):
