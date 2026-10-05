@@ -18,12 +18,27 @@ VAULT_SECRET_PATH="${VAULT_SECRET_PATH:-secret/credential-broker}"
 ROOT="${CREDENTIAL_BROKER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 umask 077
-d="$(mktemp -d)"
+# Prefer a RAM-backed directory so the secret never reaches persistent disk.
+# A trap cannot run on SIGKILL or a hard crash; RAM backing bounds any residue
+# to the lifetime of the boot instead of leaving it on disk.
+base="${XDG_RUNTIME_DIR:-}"
+{ [ -n "$base" ] && [ -d "$base" ] && [ -w "$base" ]; } || base=/dev/shm
+{ [ -d "$base" ] && [ -w "$base" ]; } || base="${TMPDIR:-/tmp}"
+d="$(mktemp -d "$base/credential-broker.XXXXXX")"
 child=""
 cleanup() {
-  [ -n "$child" ] && kill -TERM "$child" 2>/dev/null || true
-  [ -n "$child" ] && wait "$child" 2>/dev/null || true
+  # Delete the secret FIRST: nothing below may block before this runs.
   rm -rf "$d"
+  if [ -n "$child" ] && kill -0 "$child" 2>/dev/null; then
+    kill -TERM "$child" 2>/dev/null || true
+    # Bounded wait (~5s), then force-kill a child that ignores TERM.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$child" 2>/dev/null || break
+      sleep 0.5
+    done
+    kill -KILL "$child" 2>/dev/null || true
+  fi
+  [ -n "$child" ] && wait "$child" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 

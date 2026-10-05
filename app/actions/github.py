@@ -124,7 +124,8 @@ def _issue_summary(i: dict) -> dict:
 def _issue_detail(i: dict) -> dict:
     out = _issue_summary(i)
     body = i.get("body") or ""
-    out["body_preview"] = mask_secrets(body[:2000])
+    # Mask first, then truncate, so a token straddling the cut is never half-returned.
+    out["body_preview"] = mask_secrets(body)[:2000]
     return out
 
 

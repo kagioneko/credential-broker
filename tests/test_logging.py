@@ -52,3 +52,34 @@ def test_audit_logger_rejects_free_text_fields():
 
     with pytest.raises(ValueError):
         AuditLogger().emit("x", note="here is the token ghp_...")
+
+
+def test_exception_text_is_redacted_by_filter_and_factory():
+    from app.security import redaction
+
+    reg = SecretRegistry()
+    reg.register("REGISTERED_SECRET_XYZ")
+    try:
+        raise RuntimeError("upstream said REGISTERED_SECRET_XYZ and ghp_" + "C" * 36)
+    except RuntimeError:
+        import sys
+
+        exc_info = sys.exc_info()
+
+    # Filter path
+    rec = logging.LogRecord("x", logging.ERROR, __file__, 1, "boom", (), exc_info)
+    RedactionFilter(reg).filter(rec)
+    out = logging.Formatter().format(rec)
+    assert "REGISTERED_SECRET_XYZ" not in out
+    assert "ghp_" + "C" * 36 not in out
+    assert "RuntimeError" in out
+
+    # Process-wide factory path
+    redaction.install(reg)
+    try:
+        rec = logging.getLogRecordFactory()("x", logging.ERROR, __file__, 1, "boom", (), exc_info)
+        out = logging.Formatter().format(rec)
+        assert "REGISTERED_SECRET_XYZ" not in out
+        assert "ghp_" + "C" * 36 not in out
+    finally:
+        logging.setLogRecordFactory(redaction._ORIGINAL_FACTORY)

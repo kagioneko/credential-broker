@@ -50,6 +50,22 @@ def _redact_text(text: str, registry: SecretRegistry) -> str:
     return mask_secrets(text)
 
 
+def _redact_exc_text(record: logging.LogRecord, registry: SecretRegistry) -> None:
+    """Pre-render the traceback and redact it.
+
+    Formatters render ``exc_info`` lazily and reuse ``exc_text`` when it is
+    already set, so filling it here keeps exception messages (which may embed a
+    secret) from bypassing msg/args redaction.
+    """
+    if record.exc_info and not record.exc_text:
+        try:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        except Exception:
+            return
+    if record.exc_text:
+        record.exc_text = _redact_text(record.exc_text, registry)
+
+
 class RedactionFilter(logging.Filter):
     """Kept for targeted use (e.g. attaching to a specific test handler)."""
 
@@ -58,6 +74,7 @@ class RedactionFilter(logging.Filter):
         self._registry = registry
 
     def filter(self, record: logging.LogRecord) -> bool:
+        _redact_exc_text(record, self._registry)
         try:
             msg = record.getMessage()
         except Exception:
@@ -81,6 +98,7 @@ def install(registry: SecretRegistry) -> None:
 
     def factory(*args, **kwargs):
         record = _ORIGINAL_FACTORY(*args, **kwargs)
+        _redact_exc_text(record, registry)
         try:
             msg = record.getMessage()
         except Exception:

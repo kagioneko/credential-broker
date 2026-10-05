@@ -3,7 +3,38 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from tests.conftest import issue_handle
+from tests.conftest import DOTENV_SECRET, REAL_LOOKING_TOKEN, issue_handle
+
+
+@pytest.mark.parametrize("secret", [REAL_LOOKING_TOKEN, DOTENV_SECRET], ids=["pattern", "literal"])
+async def test_body_preview_never_leaks_a_secret_cut_at_the_truncation_boundary(client, respx_mock, secret):
+    # Place the secret so the 2000-char cut lands in its middle.
+    respx_mock.get("https://api.github.com/repos/example-org/demo/issues/8").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "number": 8,
+                "title": "boundary",
+                "state": "open",
+                "html_url": "https://github.com/example-org/demo/issues/8",
+                "user": {"login": "someone"},
+                "labels": [],
+                "body": "x" * 1979 + " " + secret + " tail",
+            },
+        )
+    )
+    handle = await issue_handle(client)
+    r = await client.post(
+        "/execute",
+        json={
+            "credential_handle": handle,
+            "action": "get_issue",
+            "parameters": {"owner": "example-org", "repo": "demo", "number": 8},
+        },
+    )
+    assert r.status_code == 200
+    assert len(r.json()["data"]["body_preview"]) <= 2000
+    assert secret[:12] not in r.text
 
 
 async def test_get_issue_body_preview_is_capped_and_masked(client, gh):

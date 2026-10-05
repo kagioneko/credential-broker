@@ -247,7 +247,7 @@ class ErrorResponse(BaseModel):
     error: str
 ```
 
-- `credential_id` / `action` の pattern で **path traversal 文字（`/ . \`）を弾く**（`^[a-z0-9_]+$`）。`../../.env` や `secret/data/root` は 422 ではなく「存在しない credential_id」として扱いたいので、**pattern バリデーションで落ちたら 404 `UNKNOWN_CREDENTIAL` に正規化する**（§8 のハンドラで変換。TEST-005/006 対応）。
+- `action` は pattern（`^[a-z0-9_]+$`）で **path traversal 文字（`/ . \`）を弾く**。`credential_id` は pattern を持たず長さ制限のみで、config の完全一致 lookup に外れたものはすべて「存在しない credential_id」になる（実装 `app/models/api.py`）。`../../.env` や `secret/data/root` は 422 ではなく「存在しない credential_id」として扱いたいので、**pattern バリデーションで落ちたら 404 `UNKNOWN_CREDENTIAL` に正規化する**（§8 のハンドラで変換。TEST-005/006 対応）。
 
 ### 4.3 設定モデル `app/models/config.py`
 
@@ -430,8 +430,8 @@ Res 200: { "handle": "cred_xxx", "expires_in": 300 }
 ```
 
 処理（`broker.issue()`）:
-1. `credential_id` を config から引く。無ければ **404 `{"error":"UNKNOWN_CREDENTIAL"}`**。
-2. レート制限チェック（`request_per_min`）。超過 429 `RATE_LIMITED`。
+1. レート制限チェック（`request_per_min`）。超過 429 `RATE_LIMITED`。**存在確認より先に行う**（未知IDの大量送信で制限をすり抜けたり、監査ログ・異常検知を溢れさせたりできないように）。
+2. `credential_id` を config から引く。無ければ **404 `{"error":"UNKNOWN_CREDENTIAL"}`**。
 3. `provider = providers[cfg.provider]`; `secret = provider.get_secret(cfg.secret_name)`。
    - Provider 失敗 → 502 `{"error":"CREDENTIAL_PROVIDER_ERROR"}`（内部詳細ログのみ、レスポンスに出さない）。
 4. `handle = "cred_" + secrets.token_urlsafe(24)`。

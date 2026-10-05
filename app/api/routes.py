@@ -20,7 +20,7 @@ router = APIRouter()
 
 
 @router.get("/capabilities", response_model=CapabilitiesResponse)
-def capabilities(
+async def capabilities(
     _: str = Depends(get_client_id),
     broker: CredentialBroker = Depends(get_broker),
 ) -> CapabilitiesResponse:
@@ -28,7 +28,7 @@ def capabilities(
 
 
 @router.post("/credentials/request", response_model=CredentialResponse)
-def request_credential(
+async def request_credential(
     body: CredentialRequest,
     client_id: str = Depends(get_client_id),
     broker: CredentialBroker = Depends(get_broker),
@@ -48,7 +48,7 @@ async def execute(
 
 
 @router.post("/credentials/revoke", response_model=RevokeResponse)
-def revoke(
+async def revoke(
     body: RevokeRequest,
     _: str = Depends(get_client_id),
     broker: CredentialBroker = Depends(get_broker),

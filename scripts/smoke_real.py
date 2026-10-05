@@ -18,12 +18,24 @@ GH_TOKEN = os.environ["SMOKE_GITHUB_TOKEN"]
 BROKER_TOKEN = os.environ["SMOKE_BROKER_TOKEN"]
 
 
-async def main() -> int:
-    tmp = tempfile.mkdtemp()
-    dotenv = os.path.join(tmp, ".env")
-    with open(os.open(dotenv, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
-        f.write(f"GITHUB_TOKEN={GH_TOKEN}\n")
+def _private_tmp_base() -> str | None:
+    """Prefer a RAM-backed dir so the token never reaches persistent disk."""
+    for base in (os.environ.get("XDG_RUNTIME_DIR"), "/dev/shm"):
+        if base and os.path.isdir(base) and os.access(base, os.W_OK):
+            return base
+    return None
 
+
+async def main() -> int:
+    # TemporaryDirectory removes the token file on normal exit AND on exceptions.
+    with tempfile.TemporaryDirectory(prefix="credential-broker-smoke.", dir=_private_tmp_base()) as tmp:
+        dotenv = os.path.join(tmp, ".env")
+        with open(os.open(dotenv, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+            f.write(f"GITHUB_TOKEN={GH_TOKEN}\n")
+        return await _run(dotenv)
+
+
+async def _run(dotenv: str) -> int:
     os.environ["BROKER_API_TOKEN"] = BROKER_TOKEN
     os.environ["CONFIG_PATH"] = "config/credentials.yaml"
     os.environ["DOTENV_PATH"] = dotenv

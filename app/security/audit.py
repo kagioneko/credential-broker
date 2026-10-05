@@ -39,6 +39,14 @@ _ALLOWED_FIELDS = {
 _ALLOWED_REASONS = {"ttl", "revoked", "policy", "provider", "rate_limit", "auth", "unknown"}
 
 
+class _PrivateRotatingFileHandler(RotatingFileHandler):
+    """Creates every file (including post-rotation ones) as 0600, independent of umask."""
+
+    def _open(self):
+        fd = os.open(self.baseFilename, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        return open(fd, self.mode, encoding=self.encoding, errors=self.errors)
+
+
 def handle_fingerprint(handle: str) -> str:
     return hashlib.sha256(handle.encode()).hexdigest()[:16]
 
@@ -76,7 +84,7 @@ class AuditLogger:
                 return  # already attached (repeated create_app in tests)
             self._log.removeHandler(h)  # only one audit sink at a time
             h.close()
-        handler = RotatingFileHandler(
+        handler = _PrivateRotatingFileHandler(
             path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
         )
         handler.setFormatter(logging.Formatter("%(message)s"))
