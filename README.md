@@ -144,3 +144,7 @@ Path Traversal / Prompt Injection / ログ漏洩）は `tests/` に対応実装�
 - レート制限は client 別でなく全体共通（v0.1 は単一 Broker トークン設計）
 
 詳細な差し込み位置は `IMPLEMENTATION_DESIGN_v0.1.md` §15。
+
+## License
+
+MIT License — see [LICENSE](LICENSE).
