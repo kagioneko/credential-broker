@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -18,33 +19,28 @@ GH_TOKEN = os.environ["SMOKE_GITHUB_TOKEN"]
 BROKER_TOKEN = os.environ["SMOKE_BROKER_TOKEN"]
 
 
-def _fs_type(path: str) -> str | None:
-    """Filesystem type of the mount containing ``path`` (Linux /proc only)."""
-    path = os.path.realpath(path)
-    best_mnt, best_type = "", None
+def _is_ram_dir(path: str | None) -> bool:
+    """True only if ``path`` is a writable dir whose own filesystem is tmpfs/ramfs.
+
+    Queries the path directly (statfs via ``stat -f``, same as the MCP launcher)
+    instead of parsing mount tables; any failure counts as "not RAM" (fail closed).
+    """
+    if not path or not os.path.isdir(path) or not os.access(path, os.W_OK):
+        return False
     try:
-        with open("/proc/self/mountinfo", encoding="utf-8") as f:
-            for line in f:
-                left, _, right = line.partition(" - ")
-                mnt = left.split()[4].replace("\\040", " ")
-                fstype = right.split()[0]
-                prefix = mnt.rstrip("/") + "/"
-                if (path == mnt or path.startswith(prefix)) and len(mnt) >= len(best_mnt):
-                    best_mnt, best_type = mnt, fstype
-    except (OSError, IndexError):
-        return None
-    return best_type
+        r = subprocess.run(
+            ["stat", "-f", "-c", "%T", path],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0 and r.stdout.strip() in ("tmpfs", "ramfs")
 
 
 def _private_tmp_base() -> str:
     """A writable tmpfs/ramfs dir, so the token never reaches persistent disk."""
     for base in (os.environ.get("XDG_RUNTIME_DIR"), "/dev/shm"):
-        if (
-            base
-            and os.path.isdir(base)
-            and os.access(base, os.W_OK)
-            and _fs_type(base) in ("tmpfs", "ramfs")
-        ):
+        if _is_ram_dir(base):
             return base
     raise SystemExit("smoke: no RAM-backed (tmpfs/ramfs) directory; refusing to write the token to disk")
 

@@ -542,7 +542,8 @@ class RedactionFilter(logging.Filter):
         return True
 ```
 
-- root logger と uvicorn logger の両方に装着（`logging.getLogger().addFilter(...)` + `dictConfig`）。
+- **実装は LogRecord factory 方式**（`redaction.install(registry)` が `logging.setLogRecordFactory` を差し替え）。logger に付ける Filter は、そのロガーに直接出たレコードにしか効かず、子ロガーからの伝播や `propagate=False` のロガー（uvicorn 等）を取りこぼすため、レコード生成時に書き換えてプロセス内の全ロガー・全ハンドラを覆う。`RedactionFilter` は特定ハンドラ向け（テスト等）に残している。
+- 例外トレースバックも対象: `exc_text` を事前に生成して伏字化する（Formatter は既存の `exc_text` を再利用するため）。
 - **多層防御**であって主防御ではない。第一に「Secret をロガーに渡さない」。
 
 ### 10.2 `security/audit.py` — AuditLogger
