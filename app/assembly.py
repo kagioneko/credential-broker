@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ssl
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
+import certifi
 import httpx
 
 from app.actions.github import GitHubReadExecutor
@@ -29,6 +31,42 @@ from app.security.redaction import SecretRegistry
 from app.security.redaction import install as install_redaction
 from app.settings import BrokerSettings
 from app.store import CredentialStore
+
+
+def _build_tls_context() -> ssl.SSLContext:
+    """A verifying TLS context for the broker's credentialed upstream calls that
+    does NOT consult the ambient environment for TLS key logging.
+
+    ``trust_env=False`` on the client is not enough: on httpx 0.28.1 the TLS
+    setup calls ``ssl.create_default_context()``, and it is that call - not
+    ``trust_env`` - which reads ``SSLKEYLOGFILE`` and would dump this
+    connection's TLS session keys (Codex 2026-10-23). A plain
+    ``SSLContext(PROTOCOL_TLS_CLIENT)`` never consults ``SSLKEYLOGFILE``; it
+    already verifies certificates (``CERT_REQUIRED``) and checks the hostname.
+    ``keylog_filename`` is pinned to ``None`` as belt-and-suspenders.
+    """
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_verify_locations(cafile=certifi.where())
+    ctx.keylog_filename = None
+    ctx.options |= ssl.OP_NO_COMPRESSION
+    return ctx
+
+
+def _build_upstream_client() -> httpx.AsyncClient:
+    """The broker's single client for credentialed upstream API calls.
+
+    The TLS context verifies certificates and never logs session keys (see
+    ``_build_tls_context``); ``trust_env=False`` stops ambient
+    ``HTTP(S)_PROXY`` / ``ALL_PROXY`` from rerouting these calls through a proxy.
+    A real proxy or custom trust root, if ever needed, must be configured
+    explicitly, never picked up ambiently.
+    """
+    return httpx.AsyncClient(
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        verify=_build_tls_context(),
+        trust_env=False,
+    )
 
 
 @dataclass
@@ -64,9 +102,7 @@ async def broker_context(
         clock=clock,
     )
 
-    http_client = httpx.AsyncClient(
-        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
-    )
+    http_client = _build_upstream_client()
     registry.register(GitHubReadExecutor(http_client))
 
     broker = CredentialBroker(
